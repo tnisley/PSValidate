@@ -6,6 +6,13 @@
 #  the postscript file is created. This program detects bad postscript
 #  files and places good and bad files in separate folders.
 
+# Version 2.0: Consolidates print and web workflow. Now when a file is 
+# validated, a copy is automatically sent to the E-Advance Folder 
+# to be processed for the web. When running, there is no need to have
+# AdSpeed export a PS file to the web E-Advance folder.
+
+
+
 #!/usr/bin/perl
 use strict;
 use warnings;
@@ -15,33 +22,45 @@ use autodie;
 ##########################################
 #                  MAIN                  #
 ##########################################
-my $ROOTFOLDER = ".";		   
+my $OUTPUTFILES = "./Output Files";		
+my $EADVANCEFOLDER = "./E-Advance";   
 my $PSFOLDER = "PS Files";
 my $GOODFOLDER = "Validated";
 my $BADFOLDER = "Bad_Files";
-my $LOGFILE = "$ROOTFOLDER/validate.log";
+my $LOGFILE = "./validate.log";
 
 my @PSFoldersToCheck = getPSFoldersToCheck(); 
 foreach my $folder (@PSFoldersToCheck)
 {
+	
 	checkGoodBadFolders($folder);
 	my $goodFolder = "$folder/$GOODFOLDER";  #set where processed files go.
 	my $badFolder = "$folder/$BADFOLDER";
 
 	my @notValidated = getPSFilesFromFolder($folder);
+	
 	foreach my $rawFile (@notValidated)
 	{
 		my $fP = "$folder/$rawFile";          # create full file path
 		my $isValid = validateFile("$fP");
 		
-		if ($isValid == -1)
+		if ($isValid == -1) # Validation failed
 		{
-			moveFileToFolder($fP, $badFolder);
+			move($fP, $badFolder);   #move file to bad folder
 			logBadFile($rawFile);
 		}
-		elsif ($isValid == 1)
+		elsif ($isValid == 1) # Validation success
 		{
-			moveFileToFolder($fP, $goodFolder);
+			# Place copy in E-Advance
+			my $eFolder = GetEFolder($fP);
+			if ($eFolder ne "")
+			{
+				my $eAdvance = "$EADVANCEFOLDER/$eFolder/In";
+				copy($fP, $eAdvance);
+			}
+			
+			#move file to bad folder
+			move($fP, $goodFolder);  
 		}
 	}
 }
@@ -55,13 +74,13 @@ foreach my $folder (@PSFoldersToCheck)
 sub getPSFoldersToCheck
 {
 	my $dh;
-	opendir($dh, $ROOTFOLDER);
+	opendir($dh, $OUTPUTFILES);
 	my @directories = readdir($dh);
 	closedir ($dh);
 	my @subDirs;
 	foreach my $dir (@directories)
 	{
-		my $filePath = "$dir/$PSFOLDER";
+		my $filePath = "$OUTPUTFILES/$dir/$PSFOLDER";
 		if (-d "$filePath")
 		{
 			push @subDirs,"$filePath";
@@ -149,4 +168,59 @@ sub logBadFile
 		print $fh $date->ymd, ":  $fileName\n";
 		close $fh;
 	}
+}
+
+# Parse the state from the file path 
+# and return the name of E-Advance folder
+sub GetEFolder
+{
+	my ($filename) = @_;
+	
+	if (index($filename, "IL A") != -1)
+	{
+		return "IL";
+	}
+	elsif (index($filename, "IN A") != -1)
+	{
+		return "INA";
+	}
+	elsif (index($filename, "IN B") != -1)
+	{
+		return "INB";
+	}
+	elsif (index($filename, "KA A") != -1)
+	{
+		return "KA";
+	}
+	elsif (index($filename, "MI A") != -1)
+	{
+		return "MIA";
+	}
+	elsif (index($filename, "OHE A") != -1)
+	{
+		return "OHE";
+	}
+	elsif (index($filename, "OHW A") != -1)
+	{
+		return "OHW";
+	}
+	elsif (index($filename, "WI A") != -1)
+	{
+		return "WI";
+	}
+	elsif (index($filename, "WD N") != -1)
+	{
+		return "NA";
+	}
+	
+	#Testing Purposes
+	elsif (index($filename, "TEST") != -1)
+	{
+		return "TEST";
+	}
+	
+	else     # cant parse folder
+	{ 
+		return "";
+	}	
 }
